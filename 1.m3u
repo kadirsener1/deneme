@@ -5,12 +5,12 @@
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)
 https://r0.4928d54d950ee705453.lat/yayin1.m3u8
 
-#EXTINF:-1 tvg-id="2" group-title="Spor" tvg-logo="https://example.com/logo2.png", bein 2
+#EXTINF:-1 tvg-id="2" group-title="Spor" tvg-logo="https://example.com/logo2.png", Yayin 2
 #EXTVLCOPT:http-referrer=https://trgoals1351.xyz
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)
 https://r0.3535345345.lat/yayinb2.m3u8
 
-#EXTINF:-1 tvg-id="3" group-title="Spor" tvg-logo="https://example.com/logo3.png", b3in 3 
+#EXTINF:-1 tvg-id="3" group-title="Spor" tvg-logo="https://example.com/logo3.png", Yayin 3 
 #EXTVLCOPT:http-referrer=https://trgoals1351.xyz
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)
 https://r0.3453453.lat/yayinb3.m3u8
