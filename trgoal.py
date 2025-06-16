@@ -16,7 +16,7 @@ def find_active_domain():
             continue
     raise Exception("Aktif trgoals domaini bulunamadı.")
 
-# 🌐 Kanal ID'den m3u8 linki al
+# 🌐 Kanal ID'den m3u8 linki al (güncellenmiş)
 def extract_m3u8(domain, kanal_id):
     url = f"{domain}/channel.html?id={kanal_id}"
     headers = {
@@ -26,13 +26,25 @@ def extract_m3u8(domain, kanal_id):
     try:
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
-            m3u8_match = re.search(r'(https:\/\/[^"\']+\.m3u8[^"\']*)', r.text)
-            if m3u8_match:
-                found = m3u8_match.group(1)
-                print(f"[✓] {kanal_id} bulundu: {found}")
-                return f"#EXTINF:-1,{kanal_id}\n{found}"
+            # iframe src'yi bul
+            iframe_match = re.search(r'<iframe[^>]+src="([^"]+)"', r.text)
+            if iframe_match:
+                iframe_url = iframe_match.group(1)
+                if iframe_url.startswith("/"):
+                    iframe_url = domain + iframe_url
+                elif not iframe_url.startswith("http"):
+                    iframe_url = f"{domain}/{iframe_url}"
+
+                r2 = requests.get(iframe_url, headers=headers, timeout=10)
+                m3u8_match = re.search(r'(https:\/\/[^"\']+\.m3u8[^"\']*)', r2.text)
+                if m3u8_match:
+                    found = m3u8_match.group(1)
+                    print(f"[✓] {kanal_id} bulundu: {found}")
+                    return f"#EXTINF:-1,{kanal_id}\n{found}"
+                else:
+                    print(f"[!] {kanal_id} iframe içinde m3u8 bulunamadı.")
             else:
-                print(f"[!] {kanal_id} için m3u8 bulunamadı.")
+                print(f"[!] {kanal_id} için iframe bulunamadı.")
         else:
             print(f"[!] {kanal_id} için HTTP hata: {r.status_code}")
     except Exception as e:
