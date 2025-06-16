@@ -26,50 +26,60 @@ class TRGoals:
             raise ValueError("M3U dosyasında hiç tvg-id bulunamadı!")
         return id_listesi
 
-    def m3u_guncelle(self):
-        eldeki_domain = self.referer_domainini_al()
-        konsol.log(f"[yellow][~] Bilinen Domain : {eldeki_domain}")
-        yeni_domain = self.domain
-        konsol.log(f"[green][+] Yeni Domain    : {yeni_domain}")
+   def m3u_guncelle(self):
+    eldeki_domain = self.referer_domainini_al()
+    konsol.log(f"[yellow][~] Bilinen Domain : {eldeki_domain}")
 
-        with open(self.m3u_dosyasi, "r", encoding="utf-8") as dosya:
-            m3u_icerik = dosya.read()
+    yeni_domain = self.yeni_domaini_al(eldeki_domain)
+    konsol.log(f"[green][+] Yeni Domain    : {yeni_domain}")
 
-        kanal_idleri = self.kanal_idlerini_al()
+    kontrol_url = f"{yeni_domain}/channel.html?id=yayin1"
 
-        for kanal_id in kanal_idleri:
-            kontrol_url = f"{yeni_domain}/channel.html?id={kanal_id}"
-            response = self.httpx.get(kontrol_url, follow_redirects=True)
+    with open(self.m3u_dosyasi, "r") as dosya:
+        m3u_icerik = dosya.read()
 
-            eski_yayin_url = re.search(rf'https?:\/\/[^\/]+\.(workers\.dev|shop|click|lat)\/[^\s"]*{kanal_id}[^\s"]*', m3u_icerik)
-            if not eski_yayin_url:
-                konsol.log(f"[red][-] M3U dosyasında {kanal_id} için eski yayın URL'si bulunamadı, atlanıyor.")
-                continue
+    if not (eski_yayin_url := re.search(r'https?:\/\/[^\/]+\.(workers\.dev|shop|click|lat)\/?', m3u_icerik)):
+        raise ValueError("M3U dosyasında eski yayın URL'si bulunamadı!")
 
-            eski_yayin_url = eski_yayin_url[0]
-            konsol.log(f"[yellow][~] {kanal_id} için Eski Yayın URL : {eski_yayin_url}")
+    eski_yayin_url = eski_yayin_url[0]
+    konsol.log(f"[yellow][~] Eski Yayın URL : {eski_yayin_url}")
 
-            yayin_url = None
-            yayin_ara = re.search(r'(?:var|let|const)\s+baseurl\s*=\s*"(https?://[^"]+)"', response.text)
-            if yayin_ara:
-                yayin_url = yayin_ara[1]
-            else:
-                secici = Selector(response.text)
-                baslik = secici.xpath("//title/text()").get()
-                if baslik == "404 Not Found":
-                    yayin_url = eski_yayin_url
-                    yeni_domain = eldeki_domain
-                else:
-                    konsol.print(response.text)
-                    konsol.log(f"[red][!] {kanal_id} için yayın URL'si çözümlenemedi, atlanıyor.")
-                    continue
+    # Kanal id'leri tvg-id'den alalım
+    kanal_idler = re.findall(r'tvg-id="(\d+)"', m3u_icerik)
+    if not kanal_idler:
+        raise ValueError("M3U dosyasında tvg-id bulunamadı!")
 
-            konsol.log(f"[green][+] {kanal_id} için Yeni Yayın URL : {yayin_url}")
+    # Sayfayı sadece 1 kez çekiyoruz (tek id ile)
+    response = self.httpx.get(kontrol_url, follow_redirects=True)
 
-            m3u_icerik = m3u_icerik.replace(eski_yayin_url, yayin_url).replace(eldeki_domain, yeni_domain)
+    if not (yayin_ara := re.search(r'(?:var|let|const)\s+baseurl\s*=\s*"(https?://[^"]+)"', response.text)):
+        secici = Selector(response.text)
+        baslik = secici.xpath("//title/text()").get()
+        if baslik == "404 Not Found":
+            yeni_baseurl = eski_yayin_url.rstrip('/')
+        else:
+            konsol.print(response.text)
+            raise ValueError("Base URL bulunamadı!")
+    else:
+        yeni_baseurl = yayin_ara[1].rstrip('/')
 
-        with open(self.m3u_dosyasi, "w", encoding="utf-8") as dosya:
-            dosya.write(m3u_icerik)
+    konsol.log(f"[green][+] Yeni Base URL : {yeni_baseurl}")
+
+    # M3U içeriğinde eski yayın URL'sini yeni baseurl + /kanal_id.m3u8 ile değiştiriyoruz
+    yeni_m3u_icerik = m3u_icerik
+
+    for kanal_id in kanal_idler:
+        yeni_link = f"{yeni_baseurl}/{kanal_id}.m3u8"
+        # eski_yayin_url veya mevcut kanalların linklerini yeni_link ile değiştir
+        # Burada sadece eski_yayin_url'yi değiştiriyoruz; farklı linkler varsa onları değiştirmek için ayrı kod gerekebilir
+        yeni_m3u_icerik = yeni_m3u_icerik.replace(eski_yayin_url, yeni_link)
+
+    # referer domainlerini de güncelle
+    yeni_m3u_icerik = yeni_m3u_icerik.replace(eldeki_domain, yeni_domain)
+
+    with open(self.m3u_dosyasi, "w") as dosya:
+        dosya.write(yeni_m3u_icerik)
+
         konsol.log("[green]✅ Tüm kanallar için M3U dosyası güncellendi.")
 
 if __name__ == "__main__":
