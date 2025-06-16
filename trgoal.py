@@ -10,18 +10,13 @@ class TRGoals:
 
     def referer_domainini_al(self):
         referer_deseni = r'#EXTVLCOPT:http-referrer=(https?://[^/]*trgoals[^/]*\.[^\s/]+)'
-        with open(self.m3u_dosyasi, "r") as dosya:
+        with open(self.m3u_dosyasi, "r", encoding="utf-8") as dosya:
             icerik = dosya.read()
 
-        refererler = list(set(re.findall(referer_deseni, icerik)))
-        if not refererler:
+        if eslesme := re.search(referer_deseni, icerik):
+            return eslesme[1]
+        else:
             raise ValueError("M3U dosyasında 'trgoals' içeren referer domain bulunamadı!")
-        return refererler
-
-    def kanal_idlerini_al(self):
-        with open(self.m3u_dosyasi, "r") as dosya:
-            icerik = dosya.read()
-        return list(set(re.findall(r'https?://[^\s]+/([a-zA-Z0-9_]+)\.m3u8', icerik)))
 
     def trgoals_domaini_al(self):
         redirect_url = "https://bit.ly/m/taraftarium24w"
@@ -81,48 +76,71 @@ class TRGoals:
 
         return yeni_domain
 
-    def m3u_guncelle(self):
-        eldeki_domainler = self.referer_domainini_al()
-        kanal_id_listesi = self.kanal_idlerini_al()
+    def kanal_idlerini_al(self):
+        with open(self.m3u_dosyasi, "r", encoding="utf-8") as dosya:
+            icerik = dosya.read()
 
-        with open(self.m3u_dosyasi, "r") as dosya:
+        kanal_idleri = re.findall(r'tvg-id="([^"]+)"', icerik)
+        kanal_idleri = list(dict.fromkeys(kanal_idleri))  # Tekil ve sıralı
+        return kanal_idleri
+
+    def m3u_guncelle(self):
+        eldeki_domain = self.referer_domainini_al()
+        konsol.log(f"[yellow][~] Bilinen Domain : {eldeki_domain}")
+
+        yeni_domain = self.yeni_domaini_al(eldeki_domain)
+        konsol.log(f"[green][+] Yeni Domain    : {yeni_domain}")
+
+        kanal_idleri = self.kanal_idlerini_al()
+
+        with open(self.m3u_dosyasi, "r", encoding="utf-8") as dosya:
             m3u_icerik = dosya.read()
 
-        for eldeki_domain in eldeki_domainler:
-            yeni_domain = self.yeni_domaini_al(eldeki_domain)
-            konsol.log(f"[yellow][~] {eldeki_domain} ➜ [green]{yeni_domain}")
+        for kanal_id in kanal_idleri:
+            kontrol_url = f"{yeni_domain}/channel.html?id={kanal_id}"
+            konsol.log(f"[cyan][~] Kanal ID {kanal_id} için kontrol ediliyor: {kontrol_url}")
 
-            for kanal_id in kanal_id_listesi:
-                kontrol_url = f"{yeni_domain}/channel.html?id={kanal_id}"
+            response = self.httpx.get(kontrol_url, follow_redirects=True)
 
-                try:
-                    response = self.httpx.get(kontrol_url, follow_redirects=True)
-                except Exception as e:
-                    konsol.log(f"[red][!] {kanal_id} erişim hatası: {e}")
-                    continue
+            yayin_url = None
+            if (yayin_ara := re.search(r'(?:var|let|const)\s+baseurl\s*=\s*"(https?://[^"]+)"', response.text)):
+                yayin_url = yayin_ara[1]
+            else:
+                secici = Selector(response.text)
+                baslik = secici.xpath("//title/text()").get()
+                if baslik == "404 Not Found":
+                    konsol.log(f"[yellow][!] Kanal ID {kanal_id} için 404 Not Found, eski link kullanılacak.")
+                else:
+                    konsol.print(response.text)
+                    raise ValueError(f"Kanal ID {kanal_id} için baseurl bulunamadı!")
 
-                yayin_ara = re.search(r'(?:var|let|const)\s+baseurl\s*=\s*"(https?://[^"]+)"', response.text)
-                if not yayin_ara:
-                    secici = Selector(response.text)
-                    baslik = secici.xpath("//title/text()").get()
-                    if baslik == "404 Not Found":
-                        konsol.log(f"[red][!] {kanal_id} sayfa 404")
-                        continue
-                    konsol.log(f"[red][!] {kanal_id} için yayın URL'si bulunamadı!")
-                    continue
+            if yayin_url is None:
+                # Base URL bulunamadıysa eski yayını aynı bırak
+                continue
 
-                yeni_yayin_url = f"{yayin_ara[1].rstrip('/')}/{kanal_id}.m3u8"
-                konsol.log(f"[green][+] {kanal_id} ➜ {yeni_yayin_url}")
+            # M3U içindeki eski yayın URL'si arayıp değiştir
+            # Burada eski yayın linki bulunmalı ama farklı linkler olabilir,
+            # o yüzden mevcut linklerden ilgili kanalın linkini bulup değiştirmek daha doğru olur.
+            # Ancak elimizde kanal-link eşleşmesi yoksa tüm eski domainleri değiştiriyoruz.
 
-                kanal_regex = rf'(#EXTINF[^\n]+\n#EXTVLCOPT:http-referrer={re.escape(eldeki_domain)}\n)(https?://[^\s]+{kanal_id}\.m3u8[^\n]*)'
-                m3u_icerik = re.sub(kanal_regex, rf'\1{yeni_yayin_url}', m3u_icerik)
+            # Eski domainleri güncelle
+            m3u_icerik = re.sub(
+                rf'https?://[^/\s]+/{kanal_id}\.m3u8',
+                f'{yayin_url}/{kanal_id}.m3u8',
+                m3u_icerik
+            )
 
-            m3u_icerik = m3u_icerik.replace(eldeki_domain, yeni_domain)
+            # Domain kısmını de güncelle (ör: trgoals1351.xyz -> trgoalsXXXX.xyz)
+            eski_domain_regex = r'https?://([^/\s]+)/'
+            eski_domainler = set(re.findall(eski_domain_regex, m3u_icerik))
+            for eski_domain in eski_domainler:
+                if eski_domain.startswith("trgoals"):
+                    m3u_icerik = m3u_icerik.replace(eski_domain, yeni_domain.replace("https://", "").strip("/"))
 
-        with open(self.m3u_dosyasi, "w") as dosya:
+        with open(self.m3u_dosyasi, "w", encoding="utf-8") as dosya:
             dosya.write(m3u_icerik)
 
-        konsol.log("[green][✔] M3U güncellemesi tamamlandı.")
+        konsol.log("[green][+] M3U dosyası başarıyla güncellendi!")
 
 if __name__ == "__main__":
     guncelleyici = TRGoals("1.m3u")
