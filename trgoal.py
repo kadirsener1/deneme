@@ -40,7 +40,7 @@ def extract_m3u8(domain, kanal_id):
     return None
 
 # 📝 M3U dosyasına yaz
-def write_to_m3u(lines, filename="output.m3u"):
+def write_to_m3u(lines, filename="1.m3u"):
     with open(filename, "w", encoding="utf-8") as f:
         f.write("#EXTM3U\n")
         for line in lines:
