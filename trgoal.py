@@ -125,5 +125,5 @@ class TRGoals:
         konsol.log("[green][✔] M3U güncellemesi tamamlandı.")
 
 if __name__ == "__main__":
-    guncelleyici = TRGoals("trgoals.m3u")
+    guncelleyici = TRGoals("1.m3u")
     guncelleyici.m3u_guncelle()
