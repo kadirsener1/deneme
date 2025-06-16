@@ -74,7 +74,14 @@ class TRGoals:
             yayin_url = f"{yayin_ara[1].rstrip('/')}/{kanal_id}.m3u8"
             konsol.log(f"[green][+] Yeni Yayın URL : {yayin_url}")
 
-            m3u_icerik = m3u_icerik.replace(eski_yayin_url, yayin_url)
+            # Aynı eski URL'yi kullanan tüm id'leri güncelle
+m3u_icerik = re.sub(
+    rf'({re.escape(eski_yayin_url.rstrip("/"))}/?{kanal_id}?.m3u8)',
+    yayin_url,
+    m3u_icerik
+)
+
+
             m3u_icerik = m3u_icerik.replace(eldeki_domain, yeni_domain)
 
         with open(self.m3u_dosyasi, "w") as dosya:
